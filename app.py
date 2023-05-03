@@ -1,46 +1,100 @@
 import asyncio
-import aiohttp
+import os
+from abc import ABC, abstractmethod
+from time import sleep, time
+from typing import List, Tuple, Union, Any, Dict
 
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+import aiohttp
+import numpy as np
+import streamlit as st
+import torch
+import tiktoken
+from bs4 import BeautifulSoup
+from langchain import PromptTemplate, HuggingFaceHub, LLMChain
+from langchain.callbacks import get_openai_callback
+from langchain.chains import RetrievalQA, RetrievalQAWithSourcesChain
+from langchain.chat_models import ChatOpenAI
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.llms import OpenAI
+from langchain.text_splitter import CharacterTextSplitter, RecursiveCharacterTextSplitter
+from langchain.vectorstores import Chroma
+from langchain.callbacks.base import BaseCallbackHandler
+from langchain.schema import AgentAction, AgentFinish, LLMResult
+from scipy.spatial.distance import cosine
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
-
-from bs4 import BeautifulSoup
-from time import sleep
-import streamlit as st
-from abc import ABC, abstractmethod
-from typing import List, Tuple
-from time import time
-
-from Classes.classes import DuckDuckGoNews, Page
-
-import requests
-
-from langchain.chains import RetrievalQA, RetrievalQAWithSourcesChain
-from langchain.llms import OpenAI
-import tiktoken
-
-from langchain.embeddings.openai import OpenAIEmbeddings
-from langchain.embeddings import HuggingFaceEmbeddings
-from langchain.text_splitter import CharacterTextSplitter
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import Chroma
-from langchain.callbacks import get_openai_callback
-
-from langchain.chat_models import ChatOpenAI
-from langchain import PromptTemplate, HuggingFaceHub, LLMChain
-import os
-
 from transformers import BartTokenizer, BartForConditionalGeneration
 
-from scipy.spatial.distance import cosine
-from typing import List, Tuple, Union, Any, Dict
-import numpy as np
-import torch
 
-tokenizer = tiktoken.get_encoding('cl100k_base')
+from Utils.classes import DuckDuckGoNews, Page
+from Utils.utils import *
+from Utils.prompts import *
+
+
+class StreamingStdOutCallbackHandler(BaseCallbackHandler):
+    """Callback handler for streaming. Only works with LLMs that support streaming."""
+    # initilize init with super class
+    def __init__(self) -> None:
+        super().__init__()
+        self.text = ''
+
+    def on_llm_start(
+        self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
+    ) -> None:
+        """Run when LLM starts running."""
+
+    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+        """Run on new LLM token. Only available when streaming is enabled."""
+        # st.write(token)
+        self.text = self.text + token
+        # output_container.text(self.text)
+        output_container.markdown(f'{self.text}') 
+
+    def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
+        """Run when LLM ends running."""
+
+    def on_llm_error(
+        self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
+    ) -> None:
+        """Run when LLM errors."""
+
+    def on_chain_start(
+        self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs: Any
+    ) -> None:
+        """Run when chain starts running."""
+
+    def on_chain_end(self, outputs: Dict[str, Any], **kwargs: Any) -> None:
+        """Run when chain ends running."""
+
+    def on_chain_error(
+        self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
+    ) -> None:
+        """Run when chain errors."""
+
+    def on_tool_start(
+        self, serialized: Dict[str, Any], input_str: str, **kwargs: Any
+    ) -> None:
+        """Run when tool starts running."""
+
+    def on_agent_action(self, action: AgentAction, **kwargs: Any) -> Any:
+        """Run on agent action."""
+        pass
+
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        """Run when tool ends running."""
+
+    def on_tool_error(
+        self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
+    ) -> None:
+        """Run when tool errors."""
+
+    def on_text(self, text: str, **kwargs: Any) -> None:
+        """Run on arbitrary text."""
+
+    def on_agent_finish(self, finish: AgentFinish, **kwargs: Any) -> None:
+        """Run on agent end."""
+
 
 # create the length function
 def tiktoken_len(text):
@@ -62,26 +116,6 @@ async def process_results(results, max_tokens = 100):
   return pages
 
 @st.cache_resource
-def setup_driver():
-  options = webdriver.ChromeOptions()
-  # run Selenium in headless mode
-  options.add_argument('--headless')
-  options.add_argument('--no-sandbox')
-  # overcome limited resource problems
-  options.add_argument('--disable-dev-shm-usage')
-  options.add_argument("lang=en")
-  # open Browser in maximized mode
-  options.add_argument("start-maximized")
-  # disable infobars
-  options.add_argument("disable-infobars")
-  # disable extension
-  options.add_argument("--disable-extensions")
-  options.add_argument("--incognito")
-  options.add_argument("--disable-blink-features=AutomationControlled")
-  driver = webdriver.Chrome(options=options)
-  return driver
-
-@st.cache_resource
 def set_embeddings(model_name_dic, model_class_dic, embeddings_type):
   if embeddings_type == 'OpenAI':
     return model_class_dic[embeddings_type]()
@@ -93,72 +127,6 @@ def st_wait():
     pass
   else:
     st.stop()
-
-
-
-
-#write output using streamlit
-def print_without_source(search_results, answer):
-  st.write(f'**BOT:**')
-  st.write(answer['answer'])
-  for id, (link, heading, desc) in enumerate(zip(*search_results)):
-    st.write(f'**{id}, {heading}**')
-    st.write(desc)
-    st.write(link)
-    st.write('')
-
-def print_with_source(search_results, answer):
-  st.write(f'**BOT:**')
-  st.write(answer['answer'])
-  st.write('**SOURCES**')
-  st.write(answer['sources'])
-  for id, (link, heading, desc) in enumerate(zip(*search_results)):
-    st.write(f'**{id}, {heading}**')
-    st.write(desc)
-    st.write(link)
-    st.write('')
-
-def print_output(search_results, answer, is_source):
-  if is_source:
-    print_with_source(search_results, answer)
-  else:
-    print_without_source(search_results, answer)
-
-def get_summaries(contexts, llm, example_prompt, max_token_length, is_source):
-  example_prompts = []
-  total_tokens = 0
-  max_token_length = min(3500, max_token_length)
-  format = None
-  if is_source:
-    for c in contexts:
-        if total_tokens > 3500:
-          example_prompts.pop()
-          summaries = '\n'.join(example_prompts)
-          return summaries
-        example = example_prompt.format(page_content = c['text'], source=c['id'])
-        example_prompts.append(example)
-        total_tokens += llm.get_num_tokens(example)
-  else:
-      for c in contexts:
-        if total_tokens > 3500:
-          example_prompts.pop()
-          summaries = '\n\n--\n\n'.join(example_prompts)
-          return summaries
-        example = c['text']
-        example_prompts.append(example)
-        total_tokens += llm.get_num_tokens(example)
-  example_prompts.pop()
-  summaries = '\n\n--\n\n'.join(example_prompts)
-  return summaries, format
-
-def format_query(query, context):
-    # extract passage_text from Pinecone search result and add the <P> tag
-    context = [f"<P> {m['text']}" for m in context]
-    # concatinate all context passages
-    context = " ".join(context)
-    # contcatinate the query and context passages
-    query = f"question: {query} context: {context}"
-    return query
 
 
 @st.cache_resource
@@ -183,24 +151,27 @@ def bart_generate_answer(query, contexts):
     return answer
 
 def generate_answer_langchain(query, contexts, is_source, example_prompt, max_token_length):
-  context = get_summaries(contexts, chat, example_prompt, max_token_length, is_source)
+  context = get_summaries(contexts, llm, example_prompt, max_token_length, is_source)
 
   llm_chain = LLMChain(
     prompt=prompt,
-    llm=chat
+    llm=llm
   )
 
-  with get_openai_callback() as cb:
-    answer = llm_chain({'question':query, 'context': context})['text']
-    st.write(f'Total cost to generate answer: ${cb.total_cost}')
+
+  answer_resonse = llm_chain({'question':query, 'context': context})['text']
+  total_tokens = len(tokenizer.encode(llm_chain.prompt.template)) + len(tokenizer.encode(query)) + len(tokenizer.encode(context))
+  cost = total_tokens * model_price[generative_model] if generative_model in model_price.keys() else 0
+  st.write(f'Total cost to generate answer: ${cost}')
+  
   if is_source:
-    answer = answer.split('SOURCES:')[0]
+    answer = answer_resonse.split('SOURCES:')[0]
     source = ''
-    if len(answer.split('SOURCES:')) > 1:
-      source = answer.split('SOURCES:')[1]
+    if len(answer_resonse.split('SOURCES:')) > 1:
+      source = answer_resonse.split('SOURCES:')[1]
     return {'answer': answer, 'sources': source}
   else:
-    return {'answer': answer}
+    return {'answer': answer_resonse}
 
 def generate_answer(query, contexts, is_bart):
   if is_bart:
@@ -209,98 +180,21 @@ def generate_answer(query, contexts, is_bart):
     answer = generate_answer_langchain(query, contexts, is_source, example_prompt, max_tokens_chatbot)
   return answer
 
-
-
-def get_top_k_documents_cosine(query: str, texts: List[Any], k: int, is_source: bool, embeddings_function) ->  List[Tuple[float, str, Union[None, Dict[str, str]]]]:
-    # Generate the embeddings for the query
-    query_embedding = embeddings_function.embed_documents([query])[0]
-
-    # Generate the embeddings for the texts
-    text_strings = [doc.page_content for doc in texts]
-    text_embeddings = embeddings_function.embed_documents(text_strings)
-
-    # # Calculate cosine similarity between query and text embeddings
-    similarities = [1 - cosine(query_embedding, text_embedding) for text_embedding in text_embeddings]
-
-    # Find the top k document indices and their similarities
-    top_k_indices = np.argsort(similarities)[-k:][::-1]
-    top_k_similarities = [similarities[idx] for idx in top_k_indices]
-
-    if is_source:
-        # Return the texts, similarities, and metadata of the top k documents
-        return [{'text': texts[idx].page_content, 'score': similarity, 'id' :texts[idx].metadata['source']} for idx, similarity in zip(top_k_indices, top_k_similarities)]
-    else:
-        # Return the texts and similarities of the top k documents
-        return [{'text': texts[idx].page_content, 'score':similarity, 'id' : None} for idx, similarity in zip(top_k_indices, top_k_similarities)]
-
-def get_top_k_documents_chroma(query: str, texts: List[Any], k: int, is_source: bool, embeddings_function) ->  List[Tuple[float, str, Union[None, Dict[str, str]]]]:
-  docsearch = Chroma.from_documents(texts, embeddings_function)
-  docs = docsearch.similarity_search_with_score(query, k = k)
-
-  if is_source:
-        # Return the texts, similarities, and metadata of the top k documents
-        return [{'text': doc[0].page_content, 'score': doc[1], 'id' :doc[0].metadata['source']} for doc in docs]
-  else:
-      # Return the texts and similarities of the top k documents
-      return [{'text': doc[0].page_content, 'score':doc[1], 'id' : None} for doc in docs]
+tokenizer = tiktoken.get_encoding('cl100k_base')
 
 
 
-os.environ["OPENAI_API_KEY"] = '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'
+os.environ["OPENAI_API_KEY"] = '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'
 os.environ["HUGGINGFACEHUB_API_TOKEN"] = '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'
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 st.write('Device:', device)
 
 
-template = """Given the following extracted parts of a long document and a question, create a final answer with references ("SOURCES"). 
-If you don't know the answer, just say that you don't know. Don't try to make up an answer.
-ALWAYS return a "SOURCES" part in your answer.
-QUESTION: Which state/country's law governs the interpretation of the contract?
-=========
-Content: This Agreement is governed by English law and the parties submit to the exclusive jurisdiction of the English courts in  relation to any dispute (contractual or non-contractual) concerning this Agreement save that either party may apply to any court for an  injunction or other relief to protect its Intellectual Property Rights.
-Source: 28-pl
-Content: No Waiver. Failure or delay in exercising any right or remedy under this Agreement shall not constitute a waiver of such (or any other)  right or remedy.\n\n11.7 Severability. The invalidity, illegality or unenforceability of any term (or part of a term) of this Agreement shall not affect the continuation  in force of the remainder of the term (if any) and this Agreement.\n\n11.8 No Agency. Except as expressly stated otherwise, nothing in this Agreement shall create an agency, partnership or joint venture of any  kind between the parties.\n\n11.9 No Third-Party Beneficiaries.
-Source: 30-pl
-Content: (b) if Google believes, in good faith, that the Distributor has violated or caused Google to violate any Anti-Bribery Laws (as  defined in Clause 8.5) or that such a violation is reasonably likely to occur,
-Source: 4-pl
-=========
-FINAL ANSWER: This Agreement is governed by English law.
-SOURCES: 28-pl
-QUESTION: Which state/country's law governs the interpretation of the contract?
-=========
-Content: Authors name is Jack
-Source: 28-pl
-Content: Authors Father is Mack
-Source: 30-pl
-Content: Macks son is Jack
-Source: 4-pl
-=========
-FINAL ANSWER: This Agreement is governed by English law.
-SOURCES: 28-pl, 4-pl
-QUESTION: {question}
-=========
-{context}
-=========
-FINAL ANSWER:"""
-prompt_source = PromptTemplate(template=template, input_variables=["context", "question"])
-
-example_prompt = PromptTemplate(
-    template="Content: {page_content}\nSource: {source}",
-    input_variables=["page_content", "source"],
-)
-
-prompt_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
-{context}
-Question: {question}
-Helpful Answer:"""
-prompt_no_source = PromptTemplate(
-    template=prompt_template, input_variables=["context", "question"]
-)
 
 
-t = time()
+start_time = time()
 driver = setup_driver()
-print('Time for setting driver', time() - t)
+print('Time for setting driver', time() - start_time)
 
 crawler = DuckDuckGoNews(driver)
 query = st.text_input('Enter Query:', 'Weather in Norway')
@@ -320,10 +214,11 @@ model_class_dic = {'HuggingFace-Mpnet-V2': HuggingFaceEmbeddings, 'OpenAI': Open
 embeddings = set_embeddings(model_name_dic, model_class_dic, embeddings_type)
 
 
-chat = ChatOpenAI(temperature=0)
+chat = ChatOpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()], temperature=0)
 llm_flan_t5 =HuggingFaceHub(repo_id="google/flan-t5-xl", model_kwargs={"temperature":0, "max_length":64})
 # llm_bart =HuggingFaceHub(repo_id="vblagoje/bart_lfqa")
-davinci = OpenAI()
+davinci = OpenAI(streaming=True, callbacks=[StreamingStdOutCallbackHandler()], temperature=0)
+
 generative_model_name_dic = {'Davinvci' : davinci, 'ChatGPT' : chat, 'Flan-t5-xl': llm_flan_t5}
 generative_model = st.selectbox(
     'Select Generative model',
@@ -333,8 +228,7 @@ search_method = st.selectbox(
     'Select Search Method',
     ('ANN', 'Cosine'))
 
-search_method_dic = {'ANN': get_top_k_documents_chroma, 'Cosine': get_top_k_documents_cosine}
-search_method_func = search_method_dic[search_method]
+model_price =  {'ChatGPT': 0.002/1000, 'Davinvci': 0.1200/1000, 'OpenAI': 0.0004/1000}
 
 is_bart = False
 if generative_model != 'BART LFQA':
@@ -344,7 +238,7 @@ else:
 
 
 # max results using selectbox st for 1 to 10
-results_range = (str(i) for i in range(3, 10))
+results_range = (f"{i}" for i in range(3, 10))
 max_results = int(st.selectbox('Select max results', results_range))
 
 tokens_per_chunk = int(st.text_input('Enter tokens per chunk:', '100'))
@@ -361,19 +255,19 @@ is_source = st.checkbox('Print sources?')
 
 prompt = prompt_source if is_source else prompt_no_source
 
-t = time()
+start_time = time()
 search_results = crawler.get_results(query, max_results=max_results)
-print('Time for scraping search page', time() - t)
-st.write('Time for scraping search page', time() - t)
+print('Time for scraping search page', time() - start_time)
+st.write('Time for scraping search page', time() - start_time)
 
-t = time()
+start_time = time()
 results = asyncio.run(process_results(search_results, max_tokens_per_result))
 # results = await results
-print('Time for scraping search pages results', time() - t)
-st.write('Time for scraping search pages results', time() - t)
+print('Time for scraping search pages results', time() - start_time)
+st.write('Time for scraping search pages results', time() - start_time)
 
 
-t = time()
+start_time = time()
 
 
 texts = [x.text for x in  results]
@@ -383,64 +277,28 @@ ids = [{'source': i} for i, string in enumerate(texts)]
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=tokens_per_chunk, chunk_overlap=20, length_function = tiktoken_len, separators=['\n\n', "\n", ' ', ''])
 texts = text_splitter.create_documents(texts, metadatas=ids)
-print('Time for splitting text', time() - t)
-st.write('Time for splitting text', time() - t)
+print('Time for splitting text', time() - start_time)
+st.write('Time for splitting text', time() - start_time)
 
 
-t = time()
+start_time = time()
 
-with get_openai_callback() as cb:
-  contexts = search_method_func(query, texts, top_k, is_source, embeddings)
-  st.write('Time for matching docs', time() - t)
-  st.write(f'Total cost for embeddings: ${cb.total_cost}')
-print('Time for matching docs', time() - t)
 
-t = time()
+contexts = get_top_k_documents(query, texts, top_k, is_source, search_method, embeddings)
+st.write('Time for matching docs', time() - start_time)
+total_tokens = len(tokenizer.encode(query))
+total_tokens += sum([len(tokenizer.encode(text.page_content)) for text in texts])
+cost = total_tokens * model_price[embeddings_type] if embeddings_type in model_price.keys() else 0
+st.write(f'Total cost for embeddings: ${cost}')
+print('Time for matching docs', time() - start_time)
+
+start_time = time()
+
+st.write(f'**BOT:**')
+output_container = st.empty()
+
 answer = generate_answer(query, contexts, is_bart)
-print('Time taken to generate answer', time() - t)
-st.write('Time taken to generate answer', time() - t)
+print('Time taken to generate answer', time() - start_time)
+st.write('Time taken to generate answer', time() - start_time)
 
 print_output(search_results, answer, is_source)
-# t = time()
-# docsearch = Chroma.from_documents(texts, embeddings)
-# print('Time for setting up database', time() - t)
-
-
-# t = time()
-# retriever = docsearch.as_retriever()
-# print('Time for setting up QA model', time() - t)
-
-# t = time()
-# print_output(search_results, query, retriever, is_source)
-# print('Time for predictions', time() - t)
-
-# #write output using streamlit
-# def print_without_source(search_results, query, qa_model):
-#   output = qa_model.run(query)
-#   st.write(f'**BOT:**')
-#   st.write(output)
-#   for id, (link, heading, desc) in enumerate(zip(*search_results)):
-#     st.write(f'**{id}, {heading}**')
-#     st.write(desc)
-#     st.write(link)
-#     st.write('')
-
-# def print_with_source(search_results, query, qa_model):
-#   output = qa_model({'question': query}, return_only_outputs=True)
-#   st.write(f'**BOT:**')
-#   st.write(output['answer'])
-#   st.write('**SOURCES**')
-#   st.write(output['sources'])
-#   for id, (link, heading, desc) in enumerate(zip(*search_results)):
-#     st.write(f'**{id}, {heading}**')
-#     st.write(desc)
-#     st.write(link)
-#     st.write('')
-
-# def print_output(search_results, query, retriever, is_source):
-#   if is_source:
-#     qa = RetrievalQAWithSourcesChain.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
-#     print_with_source(search_results, query, qa)
-#   else:
-#     qa = RetrievalQA.from_chain_type(llm=llm, chain_type="stuff", retriever=retriever)
-#     print_without_source(search_results, query, qa)

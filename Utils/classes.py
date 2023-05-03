@@ -11,6 +11,12 @@ import asyncio
 import aiohttp
 from bs4 import BeautifulSoup
 
+from langchain.callbacks.base import BaseCallbackHandler
+from langchain.schema import AgentAction, AgentFinish, LLMResult
+
+from typing import Any, Dict, List, Union
+
+
 
 class SearchCrawler(ABC):
     """

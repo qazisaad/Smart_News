@@ -5,10 +5,8 @@ webdriver-manager
 openai
 beautifulsoup4
 tiktoken
-streamlit
 selenium
 aiohttp
 langchain
-openai
 chromadb
 streamlit-pills

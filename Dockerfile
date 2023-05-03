@@ -1,4 +1,4 @@
-FROM python:3.9-bullseye
+FROM ubuntu:22.04
 
 # Set environment variable for hnswlib
 ENV HNSWLIB_NO_NATIVE=1
@@ -21,6 +21,9 @@ RUN unzip /tmp/chromedriver.zip chromedriver -d /usr/local/bin/
 # remember to expose the port your app'll be exposed on.
 EXPOSE 80
 
+RUN apt-get update && apt-get install -y python3-pip
+RUN pip3 install -U pip
+
 RUN pip install -U pip
 
 COPY requirements.txt app/requirements.txt
@@ -29,7 +32,7 @@ RUN pip install -r app/requirements.txt
 # copy into a directory of its own (so it isn't in the toplevel dir)
 COPY . /app
 # copy the classes folder
-COPY Classes /app/classes
+COPY Utils /app/Utils
 
 WORKDIR /app
 

@@ -184,13 +184,13 @@ tokenizer = tiktoken.get_encoding('cl100k_base')
 
 
 
-os.environ["OPENAI_API_KEY"] = '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'
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = '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'
+
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 st.write('Device:', device)
 
 
-
+os.environ["OPENAI_API_KEY"] = st.text_input('Enter OpenAI API Key:', '')
+os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.text_input('Enter HuggingFaceHub API Token:', '')
 
 start_time = time()
 driver = setup_driver()

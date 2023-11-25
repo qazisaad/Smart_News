@@ -150,7 +150,7 @@ def bart_generate_answer(query, contexts):
     answer = {'answer': answer}
     return answer
 
-def generate_answer_langchain(query, contexts, is_source, example_prompt, max_token_length):
+def generate_answer_langchain(query, language, contexts, is_source, example_prompt, max_token_length):
   context = get_summaries(contexts, llm, example_prompt, max_token_length, is_source)
 
   llm_chain = LLMChain(
@@ -159,7 +159,7 @@ def generate_answer_langchain(query, contexts, is_source, example_prompt, max_to
   )
 
 
-  answer_resonse = llm_chain({'question':query, 'context': context})['text']
+  answer_resonse = llm_chain({'question':query, 'context': context, 'language': language})['text']
   total_tokens = len(tokenizer.encode(llm_chain.prompt.template)) + len(tokenizer.encode(query)) + len(tokenizer.encode(context))
   cost = total_tokens * model_price[generative_model] if generative_model in model_price.keys() else 0
   st.write(f'Total cost to generate answer: ${cost}')
@@ -173,11 +173,11 @@ def generate_answer_langchain(query, contexts, is_source, example_prompt, max_to
   else:
     return {'answer': answer_resonse}
 
-def generate_answer(query, contexts, is_bart):
+def generate_answer(query, language, contexts, is_bart):
   if is_bart:
     answer = bart_generate_answer(query, contexts)
   else:
-    answer = generate_answer_langchain(query, contexts, is_source, example_prompt, max_tokens_chatbot)
+    answer = generate_answer_langchain(query, language, contexts, is_source, example_prompt, max_tokens_chatbot)
   return answer
 
 tokenizer = tiktoken.get_encoding('cl100k_base')
@@ -241,6 +241,12 @@ else:
 results_range = (f"{i}" for i in range(3, 10))
 max_results = int(st.selectbox('Select max results', results_range))
 
+#generate languages array
+languages_list = ['English', 'Norwegian', 'Urdu', 'Mandarin Chinese', 'Spanish', 'Hindi', 'Arabic', 'Portuguese', 'Bengali', 'Russian', 'Japanese', 'Punjabi', 'German', 'Javanese', 'Korean', 'French', 'Telugu', 'Turkish', 'Tamil', 'Italian']
+
+#select one language from list
+language = st.selectbox('Select language', languages_list)
+
 tokens_per_chunk = int(st.text_input('Enter tokens per chunk:', '100'))
 
 max_tokens_per_result = int(st.text_input('Enter max tokens per result:', '400'))
@@ -297,7 +303,7 @@ start_time = time()
 st.write(f'**BOT:**')
 output_container = st.empty()
 
-answer = generate_answer(query, contexts, is_bart)
+answer = generate_answer(query, language, contexts, is_bart)
 print('Time taken to generate answer', time() - start_time)
 st.write('Time taken to generate answer', time() - start_time)
 

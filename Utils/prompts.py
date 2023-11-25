@@ -1,7 +1,7 @@
 from langchain import PromptTemplate
 
-template = """Given the following extracted parts of a long document and a question, create a final answer with references ("SOURCES"). 
-If you don't know the answer, just say that you don't know. Don't try to make up an answer.
+template = """Given the following extracted parts of news article and a query, create a news highlight with references ("SOURCES") in the mentioned language (sources should be in english). 
+If you don't know the answer, just say that you don't know. Don't try to make up an answer, unless you can generate relevant news highlight with given information then do it.
 ALWAYS return a "SOURCES" part in your answer.
 QUESTION: Which state/country's law governs the interpretation of the contract?
 =========
@@ -12,7 +12,7 @@ Source: 30-pl
 Content: (b) if Google believes, in good faith, that the Distributor has violated or caused Google to violate any Anti-Bribery Laws (as  defined in Clause 8.5) or that such a violation is reasonably likely to occur,
 Source: 4-pl
 =========
-FINAL ANSWER: This Agreement is governed by English law.
+FINAL ANSWER (English): This Agreement is governed by English law.
 SOURCES: 28-pl
 QUESTION: Which state/country's law governs the interpretation of the contract?
 =========
@@ -23,24 +23,24 @@ Source: 30-pl
 Content: Macks son is Jack
 Source: 4-pl
 =========
-FINAL ANSWER: This Agreement is governed by English law.
+FINAL ANSWER (French): Le présent accord est régi par le droit anglais.
 SOURCES: 28-pl, 4-pl
 QUESTION: {question}
 =========
 {context}
 =========
-FINAL ANSWER:"""
-prompt_source = PromptTemplate(template=template, input_variables=["context", "question"])
+FINAL ANSWER ({language}):"""
+prompt_source = PromptTemplate(template=template, input_variables=["context", "question", 'language'])
 
 example_prompt = PromptTemplate(
     template="Content: {page_content}\nSource: {source}",
     input_variables=["page_content", "source"],
 )
 
-prompt_template = """Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know, don't try to make up an answer.
+prompt_template = """Use the following pieces of news article and a query to generate news highlight in the mentioned language. If you don't know the answer, just say that you don't know, don't try to make up an answer, unless you can generate relevant news highlight with given information then do it.
 {context}
 Question: {question}
-Helpful Answer:"""
+Helpful Answer ({language}):"""
 prompt_no_source = PromptTemplate(
-    template=prompt_template, input_variables=["context", "question"]
+    template=prompt_template, input_variables=["context", "question", "language"]
 )

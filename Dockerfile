@@ -37,6 +37,7 @@ COPY Utils /app/Utils
 WORKDIR /app
 
 # run it!
-ENTRYPOINT ["streamlit", "run", "app.py", "--server.port=80", "--server.address=0.0.0.0"]
-# CMD ["app.py"]
-# ENTRYPOINT ["python"]
+ENTRYPOINT ["streamlit", "run", "recommendation.py", "--server.port=80", "--server.address=0.0.0.0"]
+
+# ENTRYPOINT ["python3", "recommendation.py"]
+# CMD ["./app.py"]

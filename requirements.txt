@@ -10,3 +10,8 @@ aiohttp
 langchain
 chromadb
 streamlit-pills
+datasets
+huggingface_hub
+faiss-gpu
+transformers
+sentence-transformers

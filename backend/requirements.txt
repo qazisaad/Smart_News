@@ -1,0 +1,9 @@
+firebase-admin==6.2.0
+python-firebase==1.2
+pydantic==1.8.2
+openapi-schema-pydantic==1.2.4
+fastapi==0.101.1
+fastapi-sessions==0.3.2
+SQLAlchemy==2.0.23
+uvicorn==0.24.0
+gunicorn==21.2.0
